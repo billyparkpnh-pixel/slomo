@@ -1,8 +1,8 @@
 import { renderPlan } from './plan.js';
-import { initSite } from './site.js';
+import { initSite } from './site.js?v=3';
 const $=selector=>document.querySelector(selector);
 const escape=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const state={config:null,tables:[],selected:null,landscape:matchMedia('(min-width: 720px)').matches,date:'',requestKey:crypto.randomUUID(),loading:false,filter:'all'};
+const state={config:null,tables:[],selected:null,landscape:matchMedia('(min-width: 720px)').matches,date:'',requestKey:crypto.randomUUID(),loading:false,filter:'all',pending:null,submitting:false};
 const site=initSite();
 let availabilityRequest=0;
 async function api(path,data) {
@@ -92,33 +92,64 @@ function setFilter(type) {
 }
 for(const button of document.querySelectorAll('[data-table-filter]'))button.addEventListener('click',()=>setFilter(button.dataset.tableFilter));
 for(const link of document.querySelectorAll('[data-pick-type]'))link.addEventListener('click',()=>setFilter(link.dataset.pickType));
-$('#booking-form').addEventListener('submit',async e=>{
-  e.preventDefault();if(!state.selected || state.loading)return;
-  const table=state.selected;const date=state.date;
-  const submit=$('#book-submit');submit.disabled=true;submit.textContent='Reserving your night…';
+$('#booking-form').addEventListener('submit',e=>{
+  e.preventDefault();if(!state.selected||state.loading)return;
+  const table=state.selected;
+  state.pending={date:state.date,table:table.id,guests:Number($('#guests').value),name:$('#full-name').value.trim(),phone:$('#phone').value.trim(),email:$('#email').value.trim(),website:$('#website').value,consent:$('#consent').checked,requestKey:state.requestKey};
+  const input=state.pending;
   $('#booking-error').textContent='';
-  try {
-    const data=await api('/api/bookings',{date,table:table.id,guests:Number($('#guests').value),name:$('#full-name').value,phone:$('#phone').value,email:$('#email').value,website:$('#website').value,consent:$('#consent').checked,requestKey:state.requestKey});
-    showReservation(data.booking,{token:data.manageToken,newBooking:true,emailMode:data.emailMode});
-    $('#booking-form').reset();clearSelection();state.requestKey=crypto.randomUUID();await loadAvailability({quiet:true});
-  }catch(error){$('#booking-error').textContent=error.message;if(error.status===409) await loadAvailability({quiet:true});}
-  finally {submit.disabled=false;submit.innerHTML='Confirm reservation <span aria-hidden="true">↗</span>';}
+  $('#review-content').innerHTML=`<p class="eyebrow">ONE LAST LOOK</p><h2 id="review-title">Your night, in detail.</h2><p class="muted">Review your reservation before confirming.</p><div class="review-summary"><dl><div><dt>Date</dt><dd>${escape(prettyDate(input.date))}</dd></div><div><dt>Table</dt><dd>${escape(table.id)} · up to ${table.capacity} guests</dd></div><div><dt>Guests</dt><dd>${input.guests}</dd></div><div><dt>Minimum order</dt><dd>${escape(table.minimum)}</dd></div><div><dt>Full name</dt><dd>${escape(input.name)}</dd></div><div><dt>Phone</dt><dd>${escape(input.phone)}</dd></div><div><dt>Email</dt><dd>${escape(input.email)}</dd></div></dl></div><p class="muted small">Payment is made at the venue. Availability is checked again when you confirm.</p><p class="form-error" id="review-error" role="alert"></p><div class="review-actions"><button class="text-link" id="review-edit">Edit details</button><button class="button" id="review-confirm">Confirm booking <span aria-hidden="true">↗</span></button></div>`;
+  $('#review-edit').addEventListener('click',()=>$('#review-dialog').close());
+  $('#review-confirm').addEventListener('click',confirmBooking);
+  $('#review-dialog').showModal();
 });
+$('#review-dialog').addEventListener('close',()=>{state.pending=null;});
+$('#review-dialog').addEventListener('cancel',e=>{if(state.submitting)e.preventDefault();});
+async function confirmBooking() {
+  if(!state.pending||state.submitting)return;
+  const input={...state.pending};
+  state.submitting=true;
+  const button=$('#review-confirm');button.disabled=true;button.textContent='Confirming…';
+  $('#review-edit').disabled=true;$('#review-dialog .dialog-close').disabled=true;$('#book-submit').disabled=true;
+  $('#review-error').textContent='';
+  try {
+    const data=await api('/api/bookings',input);
+    $('#review-dialog').close();
+    showReservation(data.booking,{email:input.email,token:data.manageToken,newBooking:true,emailMode:data.emailMode});
+    $('#booking-form').reset();clearSelection();state.requestKey=crypto.randomUUID();await loadAvailability({quiet:true});
+  }catch(error){
+    $('#review-error').textContent=error.message;
+    if(error.status===409)await loadAvailability({quiet:true});
+  }finally{
+    state.submitting=false;button.disabled=false;button.innerHTML='Confirm booking <span aria-hidden="true">↗</span>';
+    $('#review-edit').disabled=false;$('#review-dialog .dialog-close').disabled=false;$('#book-submit').disabled=false;
+  }
+}
 function prettyDate(date) {return new Intl.DateTimeFormat('en-GB',{weekday:'long',day:'numeric',month:'long',year:'numeric',timeZone:'UTC'}).format(new Date(`${date}T12:00:00Z`));}
-function showReservation(booking,{token='',newBooking=false,emailMode=''}={}) {
+function showReservation(booking,{email='',token='',newBooking=false,emailMode=''}={}) {
   const cancelled=booking.status==='cancelled';
-  $('#dialog-content').innerHTML=`<div class="confirmation-symbol">${cancelled?'↗':'✳'}</div><p class="eyebrow">${cancelled?'RESERVATION CANCELLED':state.config.demo?'PREVIEW RESERVATION':newBooking?'YOU’RE ON THE LIST':'YOUR RESERVATION'}</p><h2 id="dialog-title">${cancelled?'Until next time.':'See you at SLOMO.'}</h2><p class="muted">${cancelled?'Your table has been released.':`It’s a date, ${escape(booking.name)}. Keep your reference close.`}</p><div class="confirmation-ticket"><div class="ticket-reference"><span>BOOKING REFERENCE</span><strong>${escape(booking.reference)}</strong><button class="inline-link" id="copy-reference">Copy ↗</button></div><dl><div><dt>Your night</dt><dd>${escape(prettyDate(booking.date))}</dd></div><div><dt>Your place</dt><dd>${escape(booking.table)} · ${booking.guests} guests</dd></div><div><dt>Minimum order</dt><dd>${escape(booking.minimum)}</dd></div><div><dt>Status</dt><dd>${cancelled?'Cancelled':'Confirmed'}${state.config.demo?' · preview':''}</dd></div></dl></div>${state.config.demo?'<p class="demo-notice">This is a preview booking. Contact SLOMO to arrange a real reservation.</p>':''}${newBooking?`<p class="muted small">${emailMode==='local'?'Your confirmation is saved in the local email outbox. No email has been sent.':'Your confirmation email is queued for delivery.'}</p>`:''}${!cancelled?`<div class="confirmation-actions"><button class="button" id="download-ticket">Save reservation <span>↓</span></button><button class="text-link" id="show-cancel">Cancel reservation</button></div><div id="cancel-area" hidden><p class="muted small">Enter the private management code from your confirmation to cancel.</p><label for="manage-token">MANAGEMENT CODE</label><input id="manage-token" value="${escape(token)}" autocomplete="off" placeholder="Paste your private code"><button class="button button-outline" id="cancel-reservation">Confirm cancellation</button><p id="cancel-error" class="form-error" role="alert"></p></div>`:''}<p class="card-footnote">${escape(state.config.phone)} · Payment at the venue</p>`;
+  $('#dialog-content').innerHTML=`<div class="confirmation-symbol">${cancelled?'↗':'✳'}</div><p class="eyebrow">${cancelled?'RESERVATION CANCELLED':state.config.demo?'PREVIEW RESERVATION':newBooking?'YOU’RE ON THE LIST':'YOUR RESERVATION'}</p><h2 id="dialog-title">${cancelled?'Until next time.':'Your night, reserved.'}</h2><p class="muted">${cancelled?'Your table has been released.':`${escape(booking.name)}, keep your reference close.`}</p><div class="confirmation-ticket"><div class="ticket-reference"><span>BOOKING REFERENCE</span><strong>${escape(booking.reference)}</strong><button class="inline-link" id="copy-reference">Copy ↗</button></div><dl><div><dt>Your night</dt><dd>${escape(prettyDate(booking.date))}</dd></div><div><dt>Your place</dt><dd>${escape(booking.table)} · ${booking.guests} guests</dd></div><div><dt>Minimum order</dt><dd>${escape(booking.minimum)}</dd></div><div><dt>Status</dt><dd>${cancelled?'Cancelled':'Confirmed'}${state.config.demo?' · preview':''}</dd></div></dl></div>${state.config.demo?'<p class="demo-notice">This is a preview booking. Contact SLOMO to arrange a real reservation.</p>':''}${newBooking?`<p class="muted small">${emailMode==='local'?'Your confirmation is saved in the local email outbox. No email has been sent.':'Your confirmation email is queued for delivery.'}</p>`:''}<div class="confirmation-actions"><button class="button" id="download-ticket">Save reservation PDF <span aria-hidden="true">↓</span></button>${!cancelled?'<button class="text-link" id="show-cancel">Cancel reservation</button>':''}</div><p id="ticket-status" class="download-hint" role="status">Your PDF includes a QR link to the verified reservation lookup.</p><p id="ticket-error" class="download-error" role="alert"></p>${!cancelled?`<div id="cancel-area" hidden><p class="muted small">Enter the private management code from your confirmation email to cancel. It is never included in your PDF.</p><label for="manage-token">MANAGEMENT CODE</label><input id="manage-token" value="${escape(token)}" autocomplete="off" placeholder="Paste your private code"><button class="button button-outline" id="cancel-reservation">Confirm cancellation</button><p id="cancel-error" class="form-error" role="alert"></p></div>`:''}<p class="card-footnote">${escape(state.config.phone)} · Payment at the venue</p>`;
   $('#copy-reference').addEventListener('click',async()=>{try{await navigator.clipboard.writeText(booking.reference);toast('Booking reference copied.');}catch{toast('Select and copy the reference above.');}});
+  $('#download-ticket').addEventListener('click',async e=>{
+    const button=e.currentTarget;button.disabled=true;button.textContent='Preparing your PDF…';
+    $('#ticket-error').textContent='';$('#ticket-status').textContent='Creating your reservation pass…';
+    try {
+      if(!email)throw new Error('Find your reservation with your reference and email to download the PDF.');
+      const response=await fetch('/api/reservations/ticket',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({reference:booking.reference,email})});
+      if(!response.ok){const result=await response.json();throw new Error(result.error??'The PDF could not be prepared. Please try again.');}
+      const bytes=await response.arrayBuffer();
+      if(!response.headers.get('content-type')?.includes('application/pdf')||new TextDecoder().decode(bytes.slice(0,5))!=='%PDF-')throw new Error('The PDF could not be prepared. Please try again.');
+      const url=URL.createObjectURL(new Blob([bytes],{type:'application/pdf'}));
+      const anchor=document.createElement('a');anchor.href=url;anchor.download=`SLOMO-Reservation-${booking.reference}.pdf`;document.body.append(anchor);anchor.click();anchor.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);
+      $('#ticket-status').textContent='Your PDF is ready. If it opens in a viewer, use your device’s save controls.';
+    }catch(error){$('#ticket-error').textContent=error.message||'The download failed. Please try again.';$('#ticket-status').textContent='Your reservation is still saved. You can retry the download.';}
+    finally{button.disabled=false;button.innerHTML='Save reservation PDF <span aria-hidden="true">↓</span>';}
+  });
   if(!cancelled) {
-    $('#download-ticket').addEventListener('click',()=>{
-      const content=`SLOMO RESERVATION${state.config.demo?' — PREVIEW':''}\n\nReference: ${booking.reference}\nName: ${booking.name}\nDate: ${prettyDate(booking.date)}\nTable: ${booking.table}\nGuests: ${booking.guests}\nMinimum order: ${booking.minimum}\nStatus: ${booking.status}\n${token?`\nPrivate management code (keep secret): ${token}\n`:''}\n${state.config.address}\n${state.config.phone}\n${state.config.demo?'Preview only; contact the venue for real reservations.':'Payment at the venue.'}\nManage: ${location.origin}/#booking`;
-      const url=URL.createObjectURL(new Blob([content],{type:'text/plain'}));
-      const a=document.createElement('a');a.href=url;a.download=`${booking.reference}.txt`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
-    });
     $('#show-cancel').addEventListener('click',()=>{$('#cancel-area').hidden=!$('#cancel-area').hidden;$('#manage-token').focus();});
     $('#cancel-reservation').addEventListener('click',async e=>{
       e.target.disabled=true;$('#cancel-error').textContent='';
-      try {const result=await api('/api/reservations/cancel',{reference:booking.reference,token:$('#manage-token').value.trim()});showReservation(result.booking);await loadAvailability({quiet:true});}
+      try {const result=await api('/api/reservations/cancel',{reference:booking.reference,token:$('#manage-token').value.trim()});showReservation(result.booking,{email});await loadAvailability({quiet:true});}
       catch(error){$('#cancel-error').textContent=error.message;e.target.disabled=false;}
     });
   }
@@ -127,7 +158,7 @@ function showReservation(booking,{token='',newBooking=false,emailMode=''}={}) {
 $('#lookup-form').addEventListener('submit',async e=>{
   e.preventDefault();$('#lookup-error').textContent='';
   const button=e.target.querySelector('[type=submit]');button.disabled=true;
-  try {const data=await api('/api/reservations/lookup',{reference:$('#lookup-reference').value,email:$('#lookup-email').value});showReservation(data.booking);}
+  try {const data=await api('/api/reservations/lookup',{reference:$('#lookup-reference').value,email:$('#lookup-email').value});showReservation(data.booking,{email:$('#lookup-email').value.trim()});}
   catch(error){$('#lookup-error').textContent=error.message;} finally{button.disabled=false;}
 });
 for(const dialog of document.querySelectorAll('dialog')) {
@@ -153,5 +184,5 @@ async function initialize() {
     await loadAvailability();
   }catch(error){$('#availability-message').textContent='We couldn’t load booking details. Please refresh or call +855 87 330 003.';}
 }
-setInterval(()=>{if(!document.hidden && !$('#reservation-dialog').open && state.config && state.date)void loadAvailability({quiet:true});},30000);
+setInterval(()=>{if(!document.hidden && !$('#reservation-dialog').open && !$('#review-dialog').open && state.config && state.date)void loadAvailability({quiet:true});},30000);
 initialize();

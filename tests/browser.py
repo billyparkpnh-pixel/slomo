@@ -3,6 +3,9 @@ Run from the checkout: python3 tests/browser.py
 Uses a separate temporary database and does not change preview bookings.
 """
 import os
+import json
+import fitz
+from datetime import date
 import re
 import secrets
 import socket
@@ -39,6 +42,11 @@ with tempfile.TemporaryDirectory(prefix='slomo-browser-') as data:
                 page.on('pageerror',lambda e:errors.append(str(e)))
                 page.goto(base,wait_until='networkidle')
                 expect(page.locator('[data-table]')).to_have_count(60)
+                assert 'SLOMO Editorial' in page.locator('h1').evaluate('(el)=>getComputedStyle(el).fontFamily')
+                assert 'SLOMO Editorial' not in page.locator('#book-submit').evaluate('(el)=>getComputedStyle(el).fontFamily')
+                assert 'SLOMO Editorial' not in page.locator('.wordmark').first.evaluate('(el)=>getComputedStyle(el).fontFamily')
+                assert page.locator('#experience').evaluate('(el)=>getComputedStyle(el).backgroundColor')=='rgb(11, 24, 38)'
+                expect(page.locator('.event-placeholder')).to_contain_text('TO BE ANNOUNCED')
                 page.wait_for_timeout(1800)
                 # New public UI controls must retain table semantics and navigation.
                 expect(page.locator('#instagram-link')).to_have_attribute('href','https://www.instagram.com/slomocambodia/')
@@ -57,22 +65,70 @@ with tempfile.TemporaryDirectory(prefix='slomo-browser-') as data:
                 expect(page.locator('[data-table="T48"]')).to_have_attribute('aria-pressed','true')
                 expect(page.locator('#selected-table')).to_contain_text('6 bottles of beer')
                 page.locator('#guests').select_option('4')
-                page.locator('#full-name').fill('Browser Test Guest')
+                page.locator('#full-name').fill('Sample Guest')
                 page.locator('#phone').fill('+855 12 555 555')
                 page.locator('#email').fill('browser@example.com')
                 page.locator('#consent').check()
+                posted=[]
+                page.on('request',lambda req:posted.append(req.url) if req.method=='POST' and req.url.endswith('/api/bookings') else None)
                 page.locator('#book-submit').click()
+                expect(page.locator('#review-dialog')).to_be_visible()
+                expect(page.locator('#review-content')).to_contain_text('Sample Guest')
+                expect(page.locator('#review-content')).to_contain_text('6 bottles of beer')
+                assert not posted,'A reservation was submitted before review confirmation'
+                page.locator('#review-edit').click()
+                expect(page.locator('#full-name')).to_have_value('Sample Guest')
+                page.locator('#book-submit').click()
+                page.locator('#review-confirm').click()
                 expect(page.locator('#reservation-dialog')).to_be_visible()
+                assert len(posted)==1,'Confirmation created duplicate requests'
                 reference=page.locator('.ticket-reference strong').inner_text()
                 assert re.fullmatch(r'SLM-[A-F0-9]{12}',reference)
                 expect(page.locator('#dialog-content')).to_contain_text('Local email outbox',ignore_case=True)
+                token=page.locator('#manage-token').input_value()
+                # A temporary download failure must not lose the successful reservation.
+                page.route('**/api/reservations/ticket',lambda route:route.fulfill(status=503,content_type='application/json',body=json.dumps({'error':'Temporary ticket service failure. Please retry.'})))
+                page.locator('#download-ticket').click()
+                expect(page.locator('#ticket-error')).to_contain_text('Please retry')
+                expect(page.locator('.ticket-reference strong')).to_have_text(reference)
+                page.unroute('**/api/reservations/ticket')
                 with page.expect_download() as download_info:
                     page.locator('#download-ticket').click()
                 download=download_info.value
-                download.save_as(Path(data)/'reservation.txt')
-                ticket=(Path(data)/'reservation.txt').read_text()
-                assert reference in ticket and '6 bottles of beer' in ticket
-                token=page.locator('#manage-token').input_value()
+                assert download.suggested_filename==f'SLOMO-Reservation-{reference}.pdf'
+                ticket_path=Path(data)/'reservation.pdf'
+                download.save_as(ticket_path)
+                ticket_bytes=ticket_path.read_bytes()
+                assert ticket_bytes.startswith(b'%PDF-')
+                document=fitz.open(ticket_path);assert len(document)==1
+                ticket=document[0].get_text()
+                assert all(value in ticket for value in (reference,'Sample Guest','T48','6 bottles of beer','CONFIRMED','Street 55','+855 87 330 003'))
+                booking_date=date.fromisoformat(page.locator('#booking-date').input_value())
+                expected_date=f'{booking_date:%A}, {booking_date.day} {booking_date:%B %Y}'
+                assert expected_date in ticket
+                assert re.search(r'NUMBER OF GUESTS\s+4',ticket)
+                assert token not in ticket and token.encode() not in ticket_bytes
+                assert 'browser@example.com' not in ticket and '+855 12 555 555' not in ticket
+                assert all(word not in ticket.lower() for word in ('management code','cancellation token','api key'))
+                forged=page.request.post(base+'/api/reservations/ticket',data={'reference':reference,'email':'browser@example.com','name':'Forged Customer','table':'V10','guests':99})
+                assert forged.ok
+                with fitz.open(stream=forged.body(),filetype='pdf') as real_record:
+                    actual=real_record[0].get_text()
+                    assert 'Sample Guest' in actual and 'T48' in actual and 'Forged Customer' not in actual
+                pixmap=document[0].get_pixmap(matrix=fitz.Matrix(2,2),alpha=True)
+                rgba_path=Path(data)/'ticket.rgba';rgba_path.write_bytes(pixmap.samples)
+                qr_url=subprocess.check_output(['node','scripts/inspect-ticket-qr.js',str(rgba_path),str(pixmap.width),str(pixmap.height)],cwd=ROOT,text=True).strip()
+                assert qr_url==base+'/#booking',qr_url
+                qr_page=browser.new_page(viewport={'width':390,'height':844})
+                qr_page.goto(qr_url,wait_until='networkidle')
+                expect(qr_page.locator('#lookup-reference')).to_have_value('')
+                expect(qr_page.locator('#lookup-email')).to_have_value('')
+                expect(qr_page.locator('#reservation-dialog')).not_to_be_visible()
+                qr_page.close()
+                samples=Path('/workspace/shared/slomo-midnight');samples.mkdir(parents=True,exist_ok=True)
+                (samples/'reservation-sample.pdf').write_bytes(ticket_bytes)
+                document[0].get_pixmap(matrix=fitz.Matrix(1.7,1.7)).save(str(samples/'reservation-sample.png'))
+                document.close()
                 page.locator('#reservation-dialog .dialog-close').click()
                 expect(page.locator('[data-table="T48"]')).to_have_attribute('aria-disabled','true')
                 page.locator('#lookup-reference').fill(reference)
@@ -86,6 +142,11 @@ with tempfile.TemporaryDirectory(prefix='slomo-browser-') as data:
                 page.locator('#manage-token').fill(token)
                 page.locator('#cancel-reservation').click()
                 expect(page.locator('#dialog-title')).to_have_text('Until next time.')
+                with page.expect_download() as cancelled_download:
+                    page.locator('#download-ticket').click()
+                cancelled_download.value.save_as(Path(data)/'cancelled.pdf')
+                with fitz.open(Path(data)/'cancelled.pdf') as cancelled_pdf:
+                    assert 'CANCELLED' in cancelled_pdf[0].get_text()
                 page.locator('#reservation-dialog .dialog-close').click()
                 expect(page.locator('[data-table="T48"]')).to_have_attribute('aria-disabled','false')
                 page.locator('[data-table="T49"]').focus()
@@ -127,9 +188,15 @@ with tempfile.TemporaryDirectory(prefix='slomo-browser-') as data:
                 page.locator('#email').fill('mobile@example.com')
                 page.locator('#consent').check()
                 page.locator('#book-submit').click()
+                expect(page.locator('#review-dialog')).to_be_visible()
+                page.locator('#review-confirm').click()
                 expect(page.locator('#reservation-dialog')).to_be_visible()
                 mobile_ref=page.locator('.ticket-reference strong').inner_text()
                 assert mobile_ref!=reference
+                with page.expect_download() as mobile_download:
+                    page.locator('#download-ticket').click()
+                mobile_download.value.save_as(Path(data)/'mobile-reservation.pdf')
+                assert (Path(data)/'mobile-reservation.pdf').read_bytes().startswith(b'%PDF-')
                 page.screenshot(path=str(screenshots/'mobile-confirmation.png'))
                 # Admin authentication and reservation management.
                 admin=browser.new_page(viewport={'width':1440,'height':1000})
@@ -193,6 +260,14 @@ with tempfile.TemporaryDirectory(prefix='slomo-browser-') as data:
                 assert media.locator('#hero-video').evaluate('(el)=>el.paused')
                 media.locator('#motion-toggle').click()
                 expect(media.locator('#hero-video')).to_have_js_property('paused',False)
+                def missing_video(route):
+                    response=route.fetch()
+                    config=response.json();config['heroVideoUrl']='/missing-test-video.webm'
+                    route.fulfill(response=response,json=config)
+                media.route('**/api/config',missing_video)
+                media.reload(wait_until='networkidle')
+                expect(media.locator('#hero-video')).not_to_be_visible()
+                expect(media.locator('.hero-sculpture')).to_be_visible()
                 media.close()
                 admin.locator('#logout').click()
                 expect(admin.locator('#login-section')).to_be_visible()
@@ -203,9 +278,17 @@ with tempfile.TemporaryDirectory(prefix='slomo-browser-') as data:
                 expect(reduced.locator('[data-table]')).to_have_count(60)
                 assert reduced.locator('#hero-video').evaluate('(el)=>el.paused'),'Reduced motion must prevent autoplay'
                 reduced.close()
+                event_preview=browser.new_page(viewport={'width':1440,'height':900})
+                fixture_event={'title':'Sample programme (test fixture)','date':'2026-12-12','image':'/visuals/light-field.svg','description':'Test fixture only.','details':['Sample event detail'],'link':'/'}
+                event_preview.route('**/events-data.js*',lambda route:route.fulfill(content_type='text/javascript',body='export const events='+json.dumps([fixture_event])+';'))
+                event_preview.goto(base,wait_until='networkidle')
+                expect(event_preview.locator('.event-card h3')).to_have_text(fixture_event['title'])
+                expect(event_preview.locator('.event-card time')).to_have_text('12 December 2026')
+                expect(event_preview.locator('.event-card')).to_contain_text('Sample event detail')
+                event_preview.close()
                 assert not errors,errors
                 browser.close()
-                print('PASS: desktop and mobile bookings, keyboard selection, lookups, cancellation, terms, downloads, 4 responsive widths, category highlights, package links, mobile navigation, motion controls, reduced motion, Instagram link, admin login, reservations, holds, email outbox, CSV export, video upload/playback/pause and logout. No JavaScript errors.')
+                print('PASS: desktop and mobile bookings, keyboard selection, lookups, cancellation, terms, downloads, 4 responsive widths, category highlights, package links, mobile navigation, motion controls, reduced motion, Instagram link, admin login, reservations, holds, email outbox, CSV export, video upload/playback/pause, review before submission, genuine PDF downloads, rendered ticket details, QR privacy/lookup, download error recovery and logout. No JavaScript errors.')
         finally:
             process.terminate()
             process.wait(timeout=10)

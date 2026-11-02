@@ -8,6 +8,7 @@ import { existsSync } from 'node:fs';
 import { openDatabase, settings } from './db.js';
 import { hashToken, randomToken, initializeAdmin, verifyPassword, rateLimit } from './auth.js';
 import { queueBookingEmail, createMailer } from './email.js';
+import { createReservationPdf } from './ticket.js';
 
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 if(existsSync(join(root,'.env'))) process.loadEnvFile(join(root,'.env'));
@@ -138,6 +139,16 @@ export function createApp(options={}) {
         const booking=db.prepare('SELECT * FROM bookings WHERE reference=? AND email=?').get(String(input.reference??'').trim().toUpperCase(),String(input.email??'').trim().toLowerCase());
         if(!booking) fail(404,'No reservation matches those details.');
         return json(res,200,{booking:publicBooking(booking)});
+      }
+      if(method==='POST' && path==='/api/reservations/ticket') {
+        if(!rateLimit(db,`ticket:${ip}`,15,900000)) fail(429,'Too many ticket downloads. Please try again later.');
+        const input=await body(req);
+        if(typeof input.reference!=='string'||!emailValid(input.email)) fail(400,'Enter your reservation reference and email.');
+        const booking=db.prepare('SELECT * FROM bookings WHERE reference=? AND email=?').get(input.reference.trim().toUpperCase(),input.email.trim().toLowerCase());
+        if(!booking) fail(404,'No reservation matches those details.');
+        const bytes=await createReservationPdf(booking,settings(db),{siteUrl,demo,dataDir});
+        res.writeHead(200,{'Content-Type':'application/pdf','Cache-Control':'private, no-store','Content-Disposition':`attachment; filename="SLOMO-Reservation-${booking.reference}.pdf"`,'Content-Length':bytes.length});
+        return res.end(Buffer.from(bytes));
       }
       if(method==='POST' && path==='/api/reservations/cancel') {
         if(!rateLimit(db,`cancel:${ip}`,15,900000)) fail(429,'Too many attempts. Try again later.');

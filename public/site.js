@@ -1,5 +1,33 @@
 // Public-facing motion and navigation. Does not touch reservations or admin state.
+import { events } from './events-data.js?v=3';
+
+function renderEvents() {
+  const list=document.querySelector('#event-list');
+  if(!list)return;
+  const approved=events.filter(event=>event&&typeof event.title==='string'&&event.title.trim());
+  if(!approved.length)return;
+  list.classList.add('has-events');
+  document.querySelector('.highlights-grid').hidden=true;
+  const safeUrl=value=>typeof value==='string'&&(/^(https:\/\/)/.test(value)||/^\/(?!\/)/.test(value));
+  list.replaceChildren(...approved.map(event=>{
+    const card=document.createElement('article');card.className='event-card';
+    const image=document.createElement('img');image.loading='lazy';image.src=safeUrl(event.image)?event.image:'/visuals/light-field.svg';image.alt=`${event.title} — SLOMO event artwork`;
+    image.addEventListener('error',()=>image.src='/visuals/light-field.svg',{once:true});
+    const content=document.createElement('div');content.className='event-content';
+    const date=document.createElement('time');
+    if(/^\d{4}-\d{2}-\d{2}$/.test(event.date??'')&&!Number.isNaN(Date.parse(event.date))){date.dateTime=event.date;date.textContent=new Intl.DateTimeFormat('en-GB',{day:'numeric',month:'long',year:'numeric',timeZone:'UTC'}).format(new Date(event.date+'T12:00:00Z'));}
+    else date.textContent='Date to be announced';
+    const title=document.createElement('h3');title.textContent=event.title;
+    const description=document.createElement('p');description.textContent=event.description??'';
+    const details=document.createElement('ul');
+    for(const detail of Array.isArray(event.details)?event.details:[]){const item=document.createElement('li');item.textContent=String(detail);details.append(item);}
+    const link=document.createElement('a');link.className='text-link';link.href=safeUrl(event.link)?event.link:'#floor';link.textContent='Explore the night ↗';
+    content.append(date,title,description,details,link);card.append(image,content);return card;
+  }));
+}
+
 export function initSite() {
+  renderEvents();
   const header=document.querySelector('.site-header');
   const menu=document.querySelector('#menu-toggle');
   const navigation=document.querySelector('#main-navigation');
@@ -49,7 +77,7 @@ export function initSite() {
     const observer=new IntersectionObserver(entries=>{
       for(const entry of entries)if(entry.isIntersecting){entry.target.classList.add('reveal-in');observer.unobserve(entry.target);}
     },{threshold:.08});
-    document.querySelectorAll('.section-heading,.experience-type,.experience-art,.highlight-card,.package-card,.visit-layout').forEach(element=>observer.observe(element));
+    document.querySelectorAll('.section-heading,.experience-type,.experience-art,.highlight-card,.event-card,.package-card,.visit-layout').forEach(element=>observer.observe(element));
   }
   return {
     setVideo(source) {
