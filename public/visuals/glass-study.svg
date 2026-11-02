@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 1100" fill="none">
+ <defs>
+  <linearGradient id="bg" x2="800" y2="1100" gradientUnits="userSpaceOnUse"><stop stop-color="#aebbc0"/><stop offset=".45" stop-color="#f0f4f4"/><stop offset="1" stop-color="#94a5ae"/></linearGradient>
+  <linearGradient id="glass" x1="250" y1="230" x2="600" y2="820" gradientUnits="userSpaceOnUse"><stop stop-color="#eaffff"/><stop offset=".14" stop-color="#46bdcb" stop-opacity=".8"/><stop offset=".3" stop-color="#dbffff"/><stop offset=".42" stop-color="#157087"/><stop offset=".47" stop-color="#b8f5fb"/><stop offset=".6" stop-color="#5099a7"/><stop offset=".73" stop-color="#e5ffff"/><stop offset=".86" stop-color="#218398"/><stop offset="1" stop-color="#bdfeff"/></linearGradient>
+  <filter id="shadow"><feGaussianBlur stdDeviation="22"/></filter>
+  <path id="p" d="M290 310C110 330 130 700 360 720C630 740 700 450 540 385C380 320 200 590 390 590C590 590 630 250 450 240C220 210 290 830 590 800"/>
+ </defs>
+ <path fill="url(#bg)" d="M0 0H800V1100H0Z"/>
+ <g transform="rotate(-20 400 550)"><use href="#p" stroke="#233b47" stroke-width="77" opacity=".4" filter="url(#shadow)" transform="translate(18 65)"/><use href="#p" stroke="#34798a" stroke-width="90"/><use href="#p" stroke="url(#glass)" stroke-width="83"/><use href="#p" stroke="#c7ffff" stroke-width="58" opacity=".22"/><use href="#p" stroke="#fff" stroke-width="1.5" opacity=".7" transform="translate(-20 -15)"/></g>
+ <path d="M40 60h70M40 60v70M760 1040h-70M760 1040v-70" stroke="#3b535d" stroke-opacity=".5"/>
+ <g fill="#24434f" font-family="Arial,sans-serif" font-size="10" letter-spacing="2"><text x="44" y="1020">SLOMO / STUDY IN LIGHT</text><text x="655" y="81">02 — 03</text></g>
+</svg>

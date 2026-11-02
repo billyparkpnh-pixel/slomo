@@ -1,7 +1,9 @@
 import { renderPlan } from './plan.js';
+import { initSite } from './site.js';
 const $=selector=>document.querySelector(selector);
 const escape=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const state={config:null,tables:[],selected:null,landscape:matchMedia('(min-width: 720px)').matches,date:'',requestKey:crypto.randomUUID(),loading:false};
+const state={config:null,tables:[],selected:null,landscape:matchMedia('(min-width: 720px)').matches,date:'',requestKey:crypto.randomUUID(),loading:false,filter:'all'};
+const site=initSite();
 let availabilityRequest=0;
 async function api(path,data) {
   const res=await fetch(path,data?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)}:{});
@@ -13,25 +15,34 @@ function toast(message) {$('#toast').textContent=message;$('#toast').classList.a
 function draw() {
   $('#floor-plan').dataset.orientation=state.landscape?'landscape':'portrait';
   renderPlan($('#floor-plan'),state.tables,{selected:state.selected?.id,landscape:state.landscape,onSelect:selectTable});
+  for(const table of state.tables) {
+    const element=$(`#floor-plan [data-table="${table.id}"]`);
+    if(element)element.dataset.category=table.type;
+    element?.classList.toggle('is-highlight-muted',state.filter!=='all'&&state.filter!==table.type);
+  }
   $('#available-count').textContent=`${state.tables.filter(t=>t.available).length} tables available`;
 }
 function selectTable(table) {
   state.selected=table;
   state.requestKey=crypto.randomUUID();
+  renderSelection();
+  draw();
+  if(matchMedia('(max-width: 900px)').matches) $('.reservation-card').scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth',block:'start'});
+}
+function renderSelection() {
+  const table=state.selected;
   $('#booking-fields').disabled=false;
-  $('#selection-hint').textContent='Your spot. Your people. Let’s make it happen.';
-  $('#selected-table').innerHTML=`<span class="table-badge ${escape(table.type)}">${escape(table.id)}</span><div><strong>${table.type==='vip'?'VIP sofa':table.type==='green'?'Green table':'Turquoise table'} ${escape(table.id)}</strong><span>Minimum · ${escape(table.minimum)}</span></div>`;
+  $('#selection-hint').textContent='Your table is selected. Add your details below.';
+  $('#selected-table').innerHTML=`<span class="table-badge ${escape(table.type)}">${escape(table.id)}</span><div><span class="availability-label">AVAILABLE</span><strong>${table.type==='vip'?'VIP sofa':table.type==='green'?'Green table':'Turquoise table'} ${escape(table.id)}</strong><span>Up to ${table.capacity} guests</span><span>Minimum · ${escape(table.minimum)}</span></div>`;
   const previous=Number($('#guests').value)||2;
   $('#guests').replaceChildren(...Array.from({length:table.capacity},(_,i)=>new Option(`${i+1} ${i===0?'guest':'guests'}`,String(i+1))));
   $('#guests').value=String(Math.min(previous,table.capacity));
   $('#booking-error').textContent='';
-  draw();
-  if(matchMedia('(max-width: 900px)').matches) $('.reservation-card').scrollIntoView({behavior:'smooth',block:'start'});
 }
 function clearSelection() {
   state.selected=null;$('#booking-fields').disabled=true;
-  $('#selection-hint').textContent='Choose a table on the floor plan to get started.';
-  $('#selected-table').innerHTML='<span class="empty-table">↖</span><div><strong>Your table awaits</strong><span>Find your favorite spot.</span></div>';
+  $('#selection-hint').textContent='Select an available table to begin.';
+  $('#selected-table').innerHTML='<span class="empty-table" aria-hidden="true">↖</span><div><strong>YOUR PLACE AWAITS.</strong><span>Choose a table on the floor.</span></div>';
 }
 async function loadAvailability({quiet=false}={}) {
   const request=++availabilityRequest;
@@ -45,15 +56,19 @@ async function loadAvailability({quiet=false}={}) {
     if(state.selected) {
       const fresh=data.tables.find(t=>t.id===state.selected.id);
       if(!fresh?.available) {clearSelection();toast('That table is no longer available. Please choose another.');}
-      else {state.selected=fresh;$('#booking-fields').disabled=false;}
+      else {
+        const detailsChanged=fresh.capacity!==state.selected.capacity||fresh.minimum!==state.selected.minimum;
+        state.selected=fresh;
+        if(detailsChanged)renderSelection();
+        else $('#booking-fields').disabled=false;
+      }
     }
     $('#availability-message').textContent='';draw();
   }catch(error) {
     if(request!==availabilityRequest) return;
     $('#availability-message').textContent=error.message;
     $('#available-count').textContent='Availability unavailable';
-    $('#booking-fields').disabled=true;
-    state.tables=[];state.selected=null;draw();$('#available-count').textContent='Unable to load';
+    clearSelection();state.tables=[];draw();$('#available-count').textContent='Unable to load';
   }finally{if(request===availabilityRequest)state.loading=false;}
 }
 $('#booking-date').addEventListener('change',async e=>{
@@ -62,9 +77,21 @@ $('#booking-date').addEventListener('change',async e=>{
 $('#rotate-plan').addEventListener('click',()=>{state.landscape=!state.landscape;draw();});
 $('#zoom-plan').addEventListener('click',e=>{
   const enlarged=$('#floor-plan').classList.toggle('enlarged');
-  e.target.setAttribute('aria-pressed',String(enlarged));
-  e.target.textContent=enlarged?'Fit floor plan −':'Enlarge floor plan +';
+  e.currentTarget.setAttribute('aria-pressed',String(enlarged));
+  e.currentTarget.setAttribute('aria-label',enlarged?'Fit floor plan':'Enlarge floor plan');
+  e.currentTarget.innerHTML=enlarged?'− <span>Fit view</span>':'+ <span>Enlarge</span>';
 });
+function setFilter(type) {
+  state.filter=type;
+  document.querySelectorAll('[data-table-filter]').forEach(button=>{
+    const active=button.dataset.tableFilter===type;
+    button.classList.toggle('active',active);
+    button.setAttribute('aria-pressed',String(active));
+  });
+  draw();
+}
+for(const button of document.querySelectorAll('[data-table-filter]'))button.addEventListener('click',()=>setFilter(button.dataset.tableFilter));
+for(const link of document.querySelectorAll('[data-pick-type]'))link.addEventListener('click',()=>setFilter(link.dataset.pickType));
 $('#booking-form').addEventListener('submit',async e=>{
   e.preventDefault();if(!state.selected || state.loading)return;
   const table=state.selected;const date=state.date;
@@ -75,7 +102,7 @@ $('#booking-form').addEventListener('submit',async e=>{
     showReservation(data.booking,{token:data.manageToken,newBooking:true,emailMode:data.emailMode});
     $('#booking-form').reset();clearSelection();state.requestKey=crypto.randomUUID();await loadAvailability({quiet:true});
   }catch(error){$('#booking-error').textContent=error.message;if(error.status===409) await loadAvailability({quiet:true});}
-  finally {submit.disabled=false;submit.innerHTML='Reserve my table <span>↗</span>';}
+  finally {submit.disabled=false;submit.innerHTML='Confirm reservation <span aria-hidden="true">↗</span>';}
 });
 function prettyDate(date) {return new Intl.DateTimeFormat('en-GB',{weekday:'long',day:'numeric',month:'long',year:'numeric',timeZone:'UTC'}).format(new Date(`${date}T12:00:00Z`));}
 function showReservation(booking,{token='',newBooking=false,emailMode=''}={}) {
@@ -120,7 +147,7 @@ async function initialize() {
     const input=$('#booking-date');input.min=state.config.today;input.max=state.config.lastDate;input.value=state.config.today;state.date=input.value;
     $('#demo-notice').hidden=!state.config.demo;
     if(state.config.logoUrl) {$('#hero-logo').src=state.config.logoUrl;$('.intro img').src=state.config.logoUrl;}
-    if(state.config.heroVideoUrl) {const video=$('#hero-video');video.src=state.config.heroVideoUrl;video.hidden=false;video.play().catch(()=>{});video.addEventListener('error',()=>{video.hidden=true;});}
+    if(state.config.heroVideoUrl)site.setVideo(state.config.heroVideoUrl);
     $('#venue-address').textContent=state.config.address;$('#venue-phone').textContent=`${state.config.phone} ↗`;$('#venue-phone').href=`tel:${state.config.phone.replace(/[^\d+]/g,'')}`;
     const reference=new URLSearchParams(location.search).get('reservation');if(reference)$('#lookup-reference').value=reference;
     await loadAvailability();

@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 1100" fill="none">
+ <defs>
+  <radialGradient id="room"><stop stop-color="#15465b"/><stop offset=".5" stop-color="#05121c"/><stop offset="1" stop-color="#020508"/></radialGradient>
+  <linearGradient id="beam"><stop stop-color="#79efff" stop-opacity="0"/><stop offset=".6" stop-color="#93f5ff" stop-opacity=".1"/><stop offset="1" stop-color="#d7ffff" stop-opacity=".9"/></linearGradient>
+  <radialGradient id="orb"><stop stop-color="#deffff"/><stop offset=".08" stop-color="#50d7eb"/><stop offset="1" stop-color="#08b8dc" stop-opacity="0"/></radialGradient>
+  <filter id="b"><feGaussianBlur stdDeviation="9"/></filter>
+ </defs>
+ <path fill="url(#room)" d="M0 0H800V1100H0Z"/>
+ <g opacity=".5" stroke="#7fe7ef" stroke-width="1">
+  <path d="M0 1100 375 310 800 1100M0 920 375 310 800 920M0 750 375 310 800 750M0 580 375 310 800 580"/>
+  <path d="M-100 1080H900M0 900H800M40 750H760M100 630H700M145 535H650M225 440H555" opacity=".3"/>
+ </g>
+ <g fill="url(#beam)" filter="url(#b)"><path d="m0 0 380 310 40 14L55 0Z"/><path d="m240 0 140 310 35 14L284 0Z"/><path d="m660 0-280 310 35 14L730 0Z"/><path d="m800 0-420 310 35 14L800 45Z"/></g>
+ <g stroke="#c1f9ff"><path d="M0 0 395 317 250 1100" stroke-width="2"/><path d="M275 0 395 317 700 1100" stroke-width="1.5"/><path d="M800 0 395 317 70 1100" stroke-width="2"/><path d="M660 0 395 317 500 1100" stroke-width="1" opacity=".7"/></g>
+ <ellipse cx="395" cy="317" rx="210" ry="200" fill="url(#orb)" opacity=".7"/>
+ <g stroke="#e5fbff" stroke-opacity=".6"><path d="M50 150h20m-10-10v20M692 460h12m-6-6v12M120 700h10m-5-5v10"/></g>
+</svg>

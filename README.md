@@ -18,7 +18,7 @@ Optional configuration: copy `.env.example` to `.env`. Node loads it automatical
 
 ## What is implemented
 
-- Warm glowing SLOMO entrance with a quick zoom, reduced-motion support, smooth navigation and responsive layouts.
+- Original chrome/cyan SLOMO campaign design, full-screen hero, silver editorial experience section, visual highlights, bottle packages, mobile navigation, motion controls and responsive booking UI. Self-hosted fonts and SVG artwork keep the public site independent of third-party CDNs.
 - 60 visible tables traced from the supplied reference. DJ booth, bar, entrance, columns, VIP rows and visible WC are preserved. Desktop defaults to a rotated view; mobile defaults to the original portrait orientation. Rotate or enlarge the plan as needed. Tables support mouse, touch and keyboard selection.
 - Orange VIP V1–V10: 2 bottles of whiskey. Green tables: 1 bottle of whiskey. Turquoise tables: 6 bottles of beer. T48/T49 occupy the two red-marked positions confirmed in conversation. T39/T40 are not visible in the supplied crop and have not been invented.
 - Reservations collect a date, table, guest count, name, phone and email, with privacy/terms consent. Availability and capacities are enforced by the server. A unique partial SQLite index and transaction prevent concurrent double bookings. Idempotency keys prevent duplicate submissions. Dates use **Asia/Phnom_Penh**, with a 90-day booking window.
@@ -28,13 +28,19 @@ Optional configuration: copy `.env.example` to `.env`. Node loads it automatical
 
 ## References and outstanding venue decisions
 
-The three chat images were visible to the builder but their original files were not mounted in this checkout. The reference video was not attached. The current logo is a **vector reconstruction**, not the original photograph; the floor plan is an interactive transcription, not a generic layout. No stock nightclub photos or unrelated branding were substituted.
+The three chat images were visible to the builder but their original files were not mounted in this checkout. The reference video was not attached. The current logo is a **vector reconstruction**, not the original photograph; the floor plan is an interactive transcription, not a generic layout. The public redesign uses original chrome/cyan vector studies inspired by the supplied reference strip. No stock nightclub photos or unrelated branding were substituted. Instagram and TikTok reference pages were blocked by the cloud network, so actual club photos/video could not be imported from those links. The Instagram contact link is https://www.instagram.com/slomocambodia/.
 
 Upload the original illuminated-logo image and video in **Staff → Venue & media**, or set trusted HTTPS URLs there. Supported image types: PNG/JPEG/WebP, 5 MB maximum; videos: MP4/WebM, 25 MB maximum. Uploads are saved on the persistent data disk. The floor-plan crop cuts off part of the right side; confirm whether additional tables or room details need adding before launch. The provided branding screenshot informs the contact details; verify those with the venue.
 
 Guest capacities were not specified: provisional limits are turquoise 6, green 8, VIP 12. Staff can edit them. Confirm these limits, arrival/opening times, minimum orders, contact details, age policy and legal/privacy/retention wording with the venue before accepting real customers. Table edits affect new bookings; existing bookings keep the minimum order agreed at submission.
 
 **Development defaults to DEMO_MODE=true.** T18 and V4 are demonstration holds, and the site explicitly labels all bookings as preview/test reservations. Staff can override demo holds for a particular date. Set `DEMO_MODE=false` for actual operations. All confirmed bookings remain unavailable regardless of an “available” hold override; cancel the booking to release its table.
+
+## Public design files
+
+`public/index.html`, `public/site.css`, `public/site.js`, and the presentation code in `public/app.js` define the customer experience. `public/visuals/` contains the original SVG brand artwork. The admin dashboard continues to load its existing `styles.css`, `admin.css` and `admin.js`; the public stylesheet is isolated from it. Backend modules, database schema, table coordinates, and the shared floor-plan renderer are unchanged by the redesign.
+
+The bottle cards show the real table minimums, not invented event or promotional prices. Category controls highlight tables without hiding or moving them. Guest capacities and minimums are shown from the availability API when a table is selected. Original media configured through the existing admin settings is still supported; invalid video gracefully falls back to the graphic hero.
 
 ## Automated emails
 

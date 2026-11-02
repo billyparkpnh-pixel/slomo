@@ -40,6 +40,18 @@ with tempfile.TemporaryDirectory(prefix='slomo-browser-') as data:
                 page.goto(base,wait_until='networkidle')
                 expect(page.locator('[data-table]')).to_have_count(60)
                 page.wait_for_timeout(1800)
+                # New public UI controls must retain table semantics and navigation.
+                expect(page.locator('#instagram-link')).to_have_attribute('href','https://www.instagram.com/slomocambodia/')
+                page.locator('#motion-toggle').click()
+                expect(page.locator('#motion-toggle')).to_have_attribute('aria-pressed','true')
+                page.locator('#motion-toggle').click()
+                expect(page.locator('#motion-toggle')).to_have_attribute('aria-pressed','false')
+                page.locator('[data-table-filter="turquoise"]').click()
+                expect(page.locator('[data-table="T7"]')).to_have_class(re.compile('is-highlight-muted'))
+                assert 'is-highlight-muted' not in page.locator('[data-table="T48"]').get_attribute('class')
+                page.locator('[data-pick-type="vip"]').click()
+                expect(page.locator('[data-table-filter="vip"]')).to_have_attribute('aria-pressed','true')
+                page.locator('[data-table-filter="all"]').click()
                 assert page.locator('[data-table="V4"]').get_attribute('aria-disabled')=='true'
                 page.locator('[data-table="T48"]').click()
                 expect(page.locator('[data-table="T48"]')).to_have_attribute('aria-pressed','true')
@@ -95,6 +107,14 @@ with tempfile.TemporaryDirectory(prefix='slomo-browser-') as data:
                 # Complete a second reservation on a mobile viewport.
                 page.set_viewport_size({'width':390,'height':844})
                 page.goto(base,wait_until='networkidle')
+                page.locator('#menu-toggle').click()
+                expect(page.locator('#main-navigation')).to_be_visible()
+                expect(page.locator('#menu-toggle')).to_have_attribute('aria-expanded','true')
+                page.locator('#main-navigation a[href="#experience"]').click()
+                expect(page.locator('#menu-toggle')).to_have_attribute('aria-expanded','false')
+                page.locator('#menu-toggle').click()
+                page.keyboard.press('Escape')
+                expect(page.locator('#menu-toggle')).to_have_attribute('aria-expanded','false')
                 page.locator('#zoom-plan').click()
                 expect(page.locator('#zoom-plan')).to_have_attribute('aria-pressed','true')
                 assert page.locator('#floor-plan').evaluate('(el)=>el.scrollWidth>el.clientWidth')
@@ -143,11 +163,49 @@ with tempfile.TemporaryDirectory(prefix='slomo-browser-') as data:
                 admin.set_viewport_size({'width':390,'height':844})
                 assert admin.evaluate('document.documentElement.scrollWidth <= innerWidth'),'Admin mobile overflow'
                 admin.screenshot(path=str(screenshots/'admin-mobile.png'),full_page=True)
+                # Generate a tiny synthetic clip solely in the isolated test context.
+                # This checks the existing admin media upload and public hero together.
+                clip=admin.evaluate('''async()=>{
+                    const canvas=document.createElement('canvas');canvas.width=320;canvas.height=180;
+                    const context=canvas.getContext('2d');context.fillStyle='#1a5a70';context.fillRect(0,0,320,180);
+                    const stream=canvas.captureStream(20);const recorder=new MediaRecorder(stream,{mimeType:'video/webm;codecs=vp8'});const chunks=[];
+                    const finished=new Promise(resolve=>{recorder.ondataavailable=e=>chunks.push(e.data);recorder.onstop=async()=>{const blob=new Blob(chunks,{type:'video/webm'});resolve(Array.from(new Uint8Array(await blob.arrayBuffer())));};});
+                    recorder.start();
+                    for(let frame=0;frame<14;frame++){
+                        context.fillStyle=frame%2?'#1a5a70':'#246b80';context.fillRect(0,0,320,180);
+                        context.fillStyle='#a4f1fa';context.fillRect(frame*20,0,20,180);
+                        await new Promise(resolve=>setTimeout(resolve,60));
+                    }
+                    recorder.stop();
+                    const result=await finished;stream.getTracks().forEach(track=>track.stop());return result;
+                }''')
+                assert len(clip)>100,'No test clip was recorded'
+                admin.locator('[data-tab="settings"]').click()
+                admin.locator('#video-file').set_input_files({'name':'hero-test.webm','mimeType':'video/webm','buffer':bytes(clip)})
+                admin.locator('#video-upload button').click()
+                expect(admin.locator('#setting-video')).to_have_value(re.compile(r'/media/.+\.webm'))
+                media=browser.new_page(viewport={'width':1440,'height':900})
+                media.goto(base,wait_until='networkidle')
+                expect(media.locator('#hero-video')).to_have_js_property('readyState',4,timeout=10000)
+                expect(media.locator('html')).to_have_class(re.compile('has-hero-video'))
+                expect(media.locator('#hero-video')).to_have_js_property('paused',False)
+                media.locator('#motion-toggle').click()
+                assert media.locator('#hero-video').evaluate('(el)=>el.paused')
+                media.locator('#motion-toggle').click()
+                expect(media.locator('#hero-video')).to_have_js_property('paused',False)
+                media.close()
                 admin.locator('#logout').click()
                 expect(admin.locator('#login-section')).to_be_visible()
+                reduced=browser.new_page(viewport={'width':390,'height':844},reduced_motion='reduce')
+                reduced.goto(base,wait_until='networkidle')
+                expect(reduced.locator('.intro')).not_to_be_visible()
+                expect(reduced.locator('#motion-toggle')).to_have_attribute('aria-pressed','true')
+                expect(reduced.locator('[data-table]')).to_have_count(60)
+                assert reduced.locator('#hero-video').evaluate('(el)=>el.paused'),'Reduced motion must prevent autoplay'
+                reduced.close()
                 assert not errors,errors
                 browser.close()
-                print('PASS: desktop and mobile bookings, keyboard selection, lookups, cancellation, terms, downloads, 4 responsive widths, admin login, reservations, holds, email outbox, CSV export and logout. No JavaScript errors.')
+                print('PASS: desktop and mobile bookings, keyboard selection, lookups, cancellation, terms, downloads, 4 responsive widths, category highlights, package links, mobile navigation, motion controls, reduced motion, Instagram link, admin login, reservations, holds, email outbox, CSV export, video upload/playback/pause and logout. No JavaScript errors.')
         finally:
             process.terminate()
             process.wait(timeout=10)
