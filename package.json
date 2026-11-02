@@ -1,0 +1,14 @@
+{
+  "name": "slomo-nightclub",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=24.0.0" },
+  "scripts": {
+    "dev": "node --watch server/index.js",
+    "start": "node server/index.js",
+    "test": "node --test tests/*.test.js",
+    "check": "node --check server/index.js && node --check server/db.js && node --check server/auth.js && node --check server/email.js && node --check server/tables.js && node --check public/app.js && node --check public/admin.js && node --check public/plan.js",
+    "admin:password": "node scripts/reset-password.js"
+  }
+}

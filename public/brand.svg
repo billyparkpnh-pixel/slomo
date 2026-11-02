@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 380" fill="none">
+ <defs>
+  <filter id="warm" x="-50%" y="-70%" width="200%" height="240%"><feGaussianBlur stdDeviation="9"/></filter>
+  <linearGradient id="metal" x1="140" y1="20" x2="310" y2="240" gradientUnits="userSpaceOnUse"><stop stop-color="#eae7da"/><stop offset=".45" stop-color="#a4a49c"/><stop offset="1" stop-color="#dedbcd"/></linearGradient>
+ </defs>
+ <path d="M170 60h180c57 0 101 40 101 91 0 31-15 48-33 63-9 8-9 23-24 23H170c-57 0-101-39-101-88s44-89 101-89Z" stroke="#ffc88b" stroke-width="29" filter="url(#warm)"/>
+ <path d="M170 60h180c57 0 101 40 101 91 0 31-15 48-33 63-9 8-9 23-24 23H170c-57 0-101-39-101-88s44-89 101-89Z" stroke="#fff4d9" stroke-width="30"/>
+ <path d="M170 60h180c57 0 101 40 101 91 0 31-15 48-33 63-9 8-9 23-24 23H170c-57 0-101-39-101-88s44-89 101-89Z" stroke="url(#metal)" stroke-width="23"/>
+ <g stroke="#fff0d2" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">
+  <g filter="url(#warm)" stroke-width="9"><path d="M111 306H61c-25 0-25 25 0 25h32c25 0 25 25 0 25H42m94-50v35c0 10 7 15 17 15h46m64-50h-25c-33 0-33 50 0 50h25c33 0 33-50 0-50Zm43 50v-34c0-21 32-21 32 0v34-34c0-21 32-21 32 0v34m73-50h-25c-33 0-33 50 0 50h25c33 0 33-50 0-50Z"/></g>
+  <path d="M111 306H61c-25 0-25 25 0 25h32c25 0 25 25 0 25H42m94-50v35c0 10 7 15 17 15h46m64-50h-25c-33 0-33 50 0 50h25c33 0 33-50 0-50Zm43 50v-34c0-21 32-21 32 0v34-34c0-21 32-21 32 0v34m73-50h-25c-33 0-33 50 0 50h25c33 0 33-50 0-50Z"/>
+ </g>
+</svg>

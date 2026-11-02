@@ -1,0 +1,3 @@
+/* DejaVu symbols are self-hosted; see fonts/LICENSE-DejaVu.txt. */
+@font-face{font-family:'Slomo Symbols';src:url('/fonts/symbols.woff') format('woff');font-display:swap;unicode-range:U+2190-21FF,U+2700-27FF,U+2900-29FF}
+body,button,input,select{font-family:'Slomo Symbols',Arial,Helvetica,sans-serif}
